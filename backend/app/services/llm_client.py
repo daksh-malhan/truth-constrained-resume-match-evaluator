@@ -35,8 +35,8 @@ class OllamaLLMClient:
 
     @staticmethod
     def _model_chain() -> list[str]:
-        primary = os.getenv("OLLAMA_LLM_MODEL", "qwen3:8b")
-        fallbacks = os.getenv("OLLAMA_LLM_FALLBACK_MODELS", "qwen3.5:latest,llama3.2:latest")
+        primary = os.getenv("OLLAMA_LLM_MODEL", "resume-comparison-narrator:latest")
+        fallbacks = os.getenv("OLLAMA_LLM_FALLBACK_MODELS", "qwen3:8b,qwen3.5:latest,llama3.2:latest")
         models = [primary] + [model.strip() for model in fallbacks.split(",") if model.strip()]
         deduped: list[str] = []
         for model in models:
@@ -48,8 +48,12 @@ class OllamaLLMClient:
         errors: list[str] = []
         timeout_seconds = float(os.getenv("OLLAMA_LLM_TIMEOUT_SECONDS", "45"))
         max_tokens = int(os.getenv("OLLAMA_LLM_NUM_PREDICT", "300"))
+        use_modelfile_prompt = os.getenv("OLLAMA_USE_MODELFILE_SYSTEM_PROMPTS", "true").lower() in {"1", "true", "yes", "on"}
         for model in self._model_chain():
             try:
+                messages = [{"role": "user", "content": json.dumps(user_payload, default=str)}]
+                if not use_modelfile_prompt:
+                    messages.insert(0, {"role": "system", "content": system_prompt})
                 response = httpx.post(
                     f"{ollama_base_url()}/api/chat",
                     json={
@@ -57,10 +61,7 @@ class OllamaLLMClient:
                         "stream": False,
                         "format": "json",
                         "options": {"temperature": 0.1, "num_predict": max_tokens},
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": json.dumps(user_payload, default=str)},
-                        ],
+                        "messages": messages,
                     },
                     timeout=timeout_seconds,
                 )

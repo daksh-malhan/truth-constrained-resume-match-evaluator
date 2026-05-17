@@ -52,7 +52,7 @@ def infer_requirement_support(requirement: JobRequirement, retrieved_resume: Lis
     if not retrieved_resume:
         return InferredRequirementSupport()
 
-    model = os.getenv("OLLAMA_INFERENCE_MATCH_MODEL", "llama3.2:latest")
+    model = os.getenv("OLLAMA_INFERENCE_MATCH_MODEL", "resume-inference-matcher:latest")
     timeout = float(os.getenv("OLLAMA_INFERENCE_MATCH_TIMEOUT_SECONDS", "10"))
     max_tokens = int(os.getenv("OLLAMA_INFERENCE_MATCH_NUM_PREDICT", "280"))
     chunks = [
@@ -64,14 +64,6 @@ def infer_requirement_support(requirement: JobRequirement, retrieved_resume: Lis
         }
         for chunk in retrieved_resume[:4]
     ]
-    system_prompt = (
-        "Decide if a job requirement is reasonably inferable from cited resume evidence. "
-        "Use only the supplied resume chunks. Skills explicitly listed can support basic partial credit. "
-        "Project/work chunks can support semantic partial credit when they imply the required capability. "
-        "Do not infer unsupported tools, certifications, metrics, cloud deployment, leadership, or production claims. "
-        "Return strict JSON: can_infer boolean, inferred_match_type semantic|adjacent|weak|missing, "
-        "evidence_strength 0..0.65, confidence 0..0.85, reason, supporting_chunk_ids."
-    )
     try:
         response = httpx.post(
             f"{ollama_base_url()}/api/chat",
@@ -81,7 +73,6 @@ def infer_requirement_support(requirement: JobRequirement, retrieved_resume: Lis
                 "format": "json",
                 "options": {"temperature": 0, "num_predict": max_tokens},
                 "messages": [
-                    {"role": "system", "content": system_prompt},
                     {
                         "role": "user",
                         "content": json.dumps(

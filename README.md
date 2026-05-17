@@ -81,9 +81,12 @@ The project is configured for local models through Ollama.
 | vLLM local server | Higher throughput and production serving options | Heavier setup, GPU-oriented, more ops burden for a portfolio app | Better for hosted GPU deployment |
 | llama.cpp directly | Very lightweight and portable | More custom integration work and less convenient model lifecycle than Ollama | Good embedded runtime, not best default |
 
-Selected defaults:
+Selected defaults on the `ollama-specialized-modelfiles` branch:
 
-- Comparison/extraction narrative model: `qwen3:8b`
+- JD cleaning model: `resume-jd-cleaner:latest`
+- Resume context model: `resume-context-classifier:latest`
+- Inference matching model: `resume-inference-matcher:latest`
+- Comparison narrative model: `resume-comparison-narrator:latest`
 - LLM fallback chain: `qwen3.5:latest`, then `llama3.2:latest`
 - Embedding model: `mxbai-embed-large:latest`
 - Embedding fallback chain: `nomic-embed-text`, then `snowflake-arctic-embed:latest`
@@ -91,7 +94,13 @@ Selected defaults:
 - Vector database: Qdrant
 - Mock fallback: disabled by default. It exists only for tests or emergency demos when `ENABLE_MOCK_FALLBACK=true`.
 
-The final score is still computed by deterministic rubric code. The local LLM is used only behind a structured-output interface for narrative comparison, not as a black-box scorer.
+The specialized models are created from [ollama/Modelfile.*](ollama). Their system prompts bake in each task, so runtime calls send only the raw job description or compact JSON payload. This reduces repeated prompt tokens and keeps each model narrowly scoped. The final score is still computed by deterministic rubric code. The local LLM is used only behind structured-output interfaces, not as a black-box scorer.
+
+Create the local specialized models with:
+
+```bash
+./scripts/create_ollama_models.sh
+```
 
 ## RAG Design
 
@@ -234,6 +243,7 @@ ollama pull llama3.2:latest
 ollama pull mxbai-embed-large:latest
 ollama pull nomic-embed-text
 ollama pull snowflake-arctic-embed:latest
+./scripts/create_ollama_models.sh
 cd backend
 ../.venv/bin/uvicorn app.main:app --reload --port 8000
 ```
@@ -261,7 +271,7 @@ Services:
 - Backend: `http://localhost:8000`
 - Qdrant: `http://localhost:6333`
 
-Docker Compose starts Qdrant and Ollama. The `ollama-pull` service pulls `OLLAMA_LLM_MODEL` and `OLLAMA_EMBEDDING_MODEL` before the first full local run. Model downloads can take several minutes and require enough disk space/RAM for the selected model.
+Docker Compose starts Qdrant and Ollama. The `ollama-pull` service pulls the base local LLMs and `OLLAMA_EMBEDDING_MODEL` before the first full local run, then creates the four specialized Ollama models from the checked-in Modelfiles. Model downloads can take several minutes and require enough disk space/RAM for the selected model.
 
 ## Tests
 
@@ -283,6 +293,7 @@ See [.env.example](.env.example):
 - `OLLAMA_BASE_URL`
 - `OLLAMA_LLM_MODEL`
 - `OLLAMA_LLM_FALLBACK_MODELS`
+- `OLLAMA_USE_MODELFILE_SYSTEM_PROMPTS`
 - `OLLAMA_LLM_TIMEOUT_SECONDS`
 - `OLLAMA_LLM_NUM_PREDICT`
 - `ENABLE_JD_CLEANER_LLM`

@@ -82,16 +82,9 @@ def deterministic_clean_job_description(job_description_text: str) -> CleanedJob
 
 
 def llm_clean_job_description(job_description_text: str) -> CleanedJobDescription:
-    model = os.getenv("OLLAMA_JD_CLEANER_MODEL", "llama3.2:latest")
+    model = os.getenv("OLLAMA_JD_CLEANER_MODEL", "resume-jd-cleaner:latest")
     timeout = float(os.getenv("OLLAMA_JD_CLEANER_TIMEOUT_SECONDS", "12"))
     max_tokens = int(os.getenv("OLLAMA_JD_CLEANER_NUM_PREDICT", "450"))
-    system_prompt = (
-        "Extract only concrete candidate requirements that could be supported by resume evidence. "
-        "Ignore company descriptions, marketing copy, mission statements, benefits, equal opportunity statements, "
-        "social links, vague slogans, headings without requirements, and statements about the company/product unless "
-        "they imply candidate experience. Return strict JSON with concrete_requirements and ignored_snippets arrays. "
-        "Do not invent requirements."
-    )
     response = httpx.post(
         f"{ollama_base_url()}/api/chat",
         json={
@@ -100,8 +93,7 @@ def llm_clean_job_description(job_description_text: str) -> CleanedJobDescriptio
             "format": "json",
             "options": {"temperature": 0, "num_predict": max_tokens},
             "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": json.dumps({"job_description": job_description_text})},
+                {"role": "user", "content": job_description_text},
             ],
         },
         timeout=timeout,

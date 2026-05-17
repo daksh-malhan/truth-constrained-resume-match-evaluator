@@ -64,7 +64,7 @@ def deterministic_contextualize_resume(evidence: List[ResumeEvidence]) -> Resume
 
 
 def llm_contextualize_resume(evidence: List[ResumeEvidence]) -> ResumeContextResult:
-    model = os.getenv("OLLAMA_RESUME_CONTEXT_MODEL", "llama3.2:latest")
+    model = os.getenv("OLLAMA_RESUME_CONTEXT_MODEL", "resume-context-classifier:latest")
     timeout = float(os.getenv("OLLAMA_RESUME_CONTEXT_TIMEOUT_SECONDS", "25"))
     max_tokens = int(os.getenv("OLLAMA_RESUME_CONTEXT_NUM_PREDICT", "450"))
     priority = sorted(
@@ -86,12 +86,6 @@ def llm_contextualize_resume(evidence: List[ResumeEvidence]) -> ResumeContextRes
         }
         for item in priority
     ]
-    system_prompt = (
-        "Classify resume evidence context using only the supplied evidence. Return compact strict JSON with "
-        "candidate_context_summary and evidence_updates. evidence_updates must reference existing evidence_id values. "
-        "Use evidence_type project for action-oriented project bullets, work_experience for job bullets, skill for lists, "
-        "education for coursework/degrees, otherwise other. Do not invent tools, metrics, companies, degrees, or outcomes."
-    )
     response = httpx.post(
         f"{ollama_base_url()}/api/chat",
         json={
@@ -100,7 +94,6 @@ def llm_contextualize_resume(evidence: List[ResumeEvidence]) -> ResumeContextRes
             "format": "json",
             "options": {"temperature": 0, "num_predict": max_tokens},
             "messages": [
-                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": json.dumps({"resume_evidence": compact})},
             ],
         },
