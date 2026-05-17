@@ -1,0 +1,14 @@
+AI Engineering Intern
+
+We are looking for an engineer to build production-style AI applications with Python and FastAPI.
+
+Required experience building RAG systems, semantic search, or vector search applications with citation-backed outputs.
+
+Must have experience integrating LLM APIs such as OpenAI API and creating structured outputs.
+
+Experience with React or Next.js frontend development is preferred.
+
+Familiarity with Docker, SQL databases, testing with pytest, and operational logging is important.
+
+Bonus: Qdrant, LangGraph, MCP tools, Kubernetes, and cloud deployment experience.
+

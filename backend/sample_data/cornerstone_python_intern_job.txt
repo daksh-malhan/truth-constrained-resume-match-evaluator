@@ -1,0 +1,30 @@
+We're looking for a Junior Engineer - Python- Intern This role is Office Based, Pune Office
+
+We are looking for a Python Intern to support backend development, data processing, and automation tasks. This role is ideal for someone eager to work on real-world applications, APIs, and data-driven systems.
+
+In this role you will...
+
+Develop and maintain backend services using Python
+Build and consume REST APIs
+Work on data processing / ETL pipelines
+Write scripts for automation and optimization
+Debug issues and improve code performance
+Collaborate with team members on feature development
+
+You Have What It Takes If You Have...
+
+Strong basics in Python
+Understanding of OOP concepts
+Familiarity with data structures & algorithms
+Basic knowledge of REST APIs
+Experience with Git/version control
+
+Our Culture
+
+Spark Greatness. Shatter Boundaries. Share Success. Are you ready? Because here, right now - is where the future of work is happening. Where curious disruptors and change innovators like you are helping communities and customers enable everyone - anywhere - to learn, grow and advance. To be better tomorrow than they are today.
+
+Who We Are
+
+Cornerstone powers the potential of organizations and their people to thrive in a changing world. Cornerstone Galaxy, the complete AI-powered workforce agility platform, meets organizations where they are. With Galaxy, organizations can identify skills gaps and development opportunities, retain and engage top talent, and provide multimodal learning experiences to meet the diverse needs of the modern workforce. More than 7,000 organizations and 100 million+ users in 180+ countries and in nearly 50 languages use Cornerstone Galaxy to build high-performing, future-ready organizations and people today.
+
+Check us out on LinkedIn, Comparably, Glassdoor, and Facebook!

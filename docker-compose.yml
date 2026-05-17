@@ -1,0 +1,90 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - DATABASE_URL=sqlite:////app/data/app.db
+      - ENABLE_MOCK_MODE=false
+      - ENABLE_MOCK_FALLBACK=${ENABLE_MOCK_FALLBACK:-false}
+      - LLM_PROVIDER=ollama
+      - EMBEDDING_PROVIDER=ollama
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_LLM_MODEL=${OLLAMA_LLM_MODEL:-qwen3:8b}
+      - OLLAMA_LLM_FALLBACK_MODELS=${OLLAMA_LLM_FALLBACK_MODELS:-qwen3.5:latest,llama3.2:latest}
+      - OLLAMA_LLM_TIMEOUT_SECONDS=${OLLAMA_LLM_TIMEOUT_SECONDS:-45}
+      - OLLAMA_LLM_NUM_PREDICT=${OLLAMA_LLM_NUM_PREDICT:-300}
+      - ENABLE_JD_CLEANER_LLM=${ENABLE_JD_CLEANER_LLM:-true}
+      - OLLAMA_JD_CLEANER_MODEL=${OLLAMA_JD_CLEANER_MODEL:-llama3.2:latest}
+      - OLLAMA_JD_CLEANER_TIMEOUT_SECONDS=${OLLAMA_JD_CLEANER_TIMEOUT_SECONDS:-12}
+      - OLLAMA_JD_CLEANER_NUM_PREDICT=${OLLAMA_JD_CLEANER_NUM_PREDICT:-450}
+      - ENABLE_RESUME_CONTEXT_LLM=${ENABLE_RESUME_CONTEXT_LLM:-true}
+      - OLLAMA_RESUME_CONTEXT_MODEL=${OLLAMA_RESUME_CONTEXT_MODEL:-llama3.2:latest}
+      - OLLAMA_RESUME_CONTEXT_TIMEOUT_SECONDS=${OLLAMA_RESUME_CONTEXT_TIMEOUT_SECONDS:-25}
+      - OLLAMA_RESUME_CONTEXT_NUM_PREDICT=${OLLAMA_RESUME_CONTEXT_NUM_PREDICT:-450}
+      - ENABLE_INFERENCE_MATCH_LLM=${ENABLE_INFERENCE_MATCH_LLM:-true}
+      - OLLAMA_INFERENCE_MATCH_MODEL=${OLLAMA_INFERENCE_MATCH_MODEL:-llama3.2:latest}
+      - OLLAMA_INFERENCE_MATCH_TIMEOUT_SECONDS=${OLLAMA_INFERENCE_MATCH_TIMEOUT_SECONDS:-10}
+      - OLLAMA_INFERENCE_MATCH_NUM_PREDICT=${OLLAMA_INFERENCE_MATCH_NUM_PREDICT:-280}
+      - OLLAMA_EMBEDDING_MODEL=${OLLAMA_EMBEDDING_MODEL:-mxbai-embed-large:latest}
+      - OLLAMA_EMBEDDING_FALLBACK_MODELS=${OLLAMA_EMBEDDING_FALLBACK_MODELS:-nomic-embed-text,snowflake-arctic-embed:latest}
+      - OLLAMA_EMBEDDING_BATCH_SIZE=${OLLAMA_EMBEDDING_BATCH_SIZE:-32}
+      - RAG_RETRIEVAL_MAX_WORKERS=${RAG_RETRIEVAL_MAX_WORKERS:-8}
+      - INFERENCE_MATCH_MAX_WORKERS=${INFERENCE_MATCH_MAX_WORKERS:-3}
+      - VECTOR_STORE_PROVIDER=qdrant
+      - ENABLE_VECTOR_STORE_FALLBACK=${ENABLE_VECTOR_STORE_FALLBACK:-true}
+      - QDRANT_URL=http://qdrant:6333
+    volumes:
+      - backend_data:/app/data
+    depends_on:
+      - qdrant
+      - ollama
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_BASE=http://localhost:8000
+    depends_on:
+      - backend
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.5
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    depends_on:
+      - ollama
+    entrypoint: /bin/sh
+    command: >
+      -c "sleep 5 &&
+      ollama pull ${OLLAMA_LLM_MODEL:-qwen3:8b} &&
+      ollama pull ${OLLAMA_LLM_FALLBACK_1:-qwen3.5:latest} &&
+      ollama pull ${OLLAMA_LLM_FALLBACK_2:-llama3.2:latest} &&
+      ollama pull ${OLLAMA_EMBEDDING_MODEL:-mxbai-embed-large:latest} &&
+      ollama pull ${OLLAMA_EMBEDDING_FALLBACK_1:-nomic-embed-text} &&
+      ollama pull ${OLLAMA_EMBEDDING_FALLBACK_2:-snowflake-arctic-embed:latest}"
+
+volumes:
+  backend_data:
+  qdrant_data:
+  ollama_data:

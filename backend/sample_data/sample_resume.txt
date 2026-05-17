@@ -1,0 +1,17 @@
+Daksh Malhan
+AI Engineer
+
+Summary
+Built AI applications with Python, FastAPI, RAG, vector search, React, and Docker.
+
+Skills
+Python, FastAPI, React, Next.js, SQL, SQLite, Docker, OpenAI API, RAG, FAISS, pytest
+
+Projects
+- Built an evidence-backed RAG chatbot using Python, FastAPI, FAISS, and the OpenAI API for document question answering.
+- Created a resume scoring dashboard with React, Next.js, SQLite run history, structured logs, and pytest coverage.
+- Containerized a FastAPI service with Docker and implemented REST API endpoints.
+
+Education
+Computer Science coursework in databases, machine learning, and software engineering.
+
