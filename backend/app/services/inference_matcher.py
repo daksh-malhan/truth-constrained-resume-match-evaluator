@@ -21,6 +21,14 @@ class InferredRequirementSupport(BaseModel):
     supporting_chunk_ids: List[str] = Field(default_factory=list)
 
 
+class InferredRequirementSupportItem(InferredRequirementSupport):
+    item_id: str = ""
+
+
+class InferredRequirementSupportBatch(BaseModel):
+    results: List[InferredRequirementSupportItem] = Field(default_factory=list)
+
+
 def _normalize_result(result: InferredRequirementSupport, available_chunk_ids: set[str]) -> InferredRequirementSupport:
     match_type = result.inferred_match_type if result.inferred_match_type in {"semantic", "adjacent", "weak", "missing"} else "missing"
     strength = max(0.0, min(float(result.evidence_strength), 0.65))
@@ -95,9 +103,71 @@ def infer_requirement_support(requirement: JobRequirement, retrieved_resume: Lis
     return _normalize_result(result, {chunk.chunk_id for chunk in retrieved_resume})
 
 
+def _compact_chunks(chunks: List[RetrievedChunk], limit: int = 3, text_chars: int = 360) -> list[dict]:
+    return [
+        {
+            "chunk_id": chunk.chunk_id,
+            "text": chunk.text[:text_chars],
+            "similarity": chunk.similarity_score,
+            "source_location": chunk.citation.source_location,
+        }
+        for chunk in chunks[:limit]
+    ]
+
+
+def _infer_requirement_support_batch_ollama(items: List[tuple[JobRequirement, List[RetrievedChunk]]]) -> List[InferredRequirementSupport]:
+    model = os.getenv("OLLAMA_INFERENCE_MATCH_MODEL", "resume-inference-matcher:latest")
+    timeout = float(os.getenv("OLLAMA_INFERENCE_MATCH_BATCH_TIMEOUT_SECONDS", os.getenv("OLLAMA_INFERENCE_MATCH_TIMEOUT_SECONDS", "18")))
+    max_tokens = int(os.getenv("OLLAMA_INFERENCE_MATCH_BATCH_NUM_PREDICT", "900"))
+    payload_items = [
+        {
+            "item_id": str(index),
+            "requirement": requirement.text,
+            "normalized_requirement": requirement.normalized_skill_or_requirement,
+            "category": requirement.category,
+            "resume_chunks": _compact_chunks(chunks),
+        }
+        for index, (requirement, chunks) in enumerate(items)
+    ]
+    response = httpx.post(
+        f"{ollama_base_url()}/api/chat",
+        json={
+            "model": model,
+            "stream": False,
+            "format": "json",
+            "options": {"temperature": 0, "num_predict": max_tokens},
+            "messages": [{"role": "user", "content": json.dumps({"items": payload_items})}],
+        },
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    parsed = InferredRequirementSupportBatch.model_validate_json(response.json().get("message", {}).get("content", "{}"))
+    by_item_id = {item.item_id: item for item in parsed.results}
+    normalized: List[InferredRequirementSupport] = []
+    for index, (_, chunks) in enumerate(items):
+        result = by_item_id.get(str(index), InferredRequirementSupportItem(item_id=str(index)))
+        normalized.append(_normalize_result(result, {chunk.chunk_id for chunk in chunks}))
+    return normalized
+
+
 def infer_requirement_support_batch(items: List[tuple[JobRequirement, List[RetrievedChunk]]]) -> List[InferredRequirementSupport]:
     if not items:
         return []
+    if (
+        os.getenv("INFERENCE_MATCH_BATCH_MODE", "false").lower() in {"1", "true", "yes", "on"}
+        and os.getenv("ENABLE_INFERENCE_MATCH_LLM", "true").lower() in {"1", "true", "yes", "on"}
+        and os.getenv("LLM_PROVIDER", "mock").lower() == "ollama"
+    ):
+        batch_size = max(1, int(os.getenv("INFERENCE_MATCH_BATCH_SIZE", "8")))
+        batched_results: List[InferredRequirementSupport] = []
+        try:
+            for start in range(0, len(items), batch_size):
+                batched_results.extend(_infer_requirement_support_batch_ollama(items[start : start + batch_size]))
+            return batched_results
+        except Exception:
+            # Fall back to the older per-requirement path if the local model returns
+            # malformed JSON. Scoring remains deterministic and truth-constrained.
+            pass
     workers = max(1, int(os.getenv("INFERENCE_MATCH_MAX_WORKERS", "3")))
     results: List[InferredRequirementSupport] = [InferredRequirementSupport() for _ in items]
     with ThreadPoolExecutor(max_workers=min(workers, len(items))) as executor:

@@ -144,19 +144,30 @@ def _apply_update(item: ResumeEvidence, update: ResumeEvidenceUpdate, full_resum
 
 
 def contextualize_resume_evidence(evidence: List[ResumeEvidence], full_resume_text: str) -> tuple[List[ResumeEvidence], ResumeContextResult]:
-    if os.getenv("ENABLE_RESUME_CONTEXT_LLM", "true").lower() in {"1", "true", "yes", "on"} and os.getenv("LLM_PROVIDER", "mock").lower() == "ollama":
+    deterministic = deterministic_contextualize_resume(evidence)
+    mode = os.getenv("RESUME_CONTEXT_LLM_MODE", "auto").lower()
+    action_items = sum(1 for item in evidence if item.evidence_type in {"project", "work_experience"} or any(verb in item.text.lower() for verb in ACTION_VERBS))
+    skill_terms = {skill for item in evidence for skill in item.skills_detected + item.tools_detected}
+    # Most resumes are classifiable with local rules. In auto mode, reserve the
+    # local LLM for sparse or ambiguous parses where context can improve scoring.
+    enough_rule_context = action_items >= int(os.getenv("RESUME_CONTEXT_MIN_ACTION_ITEMS", "3")) and len(skill_terms) >= int(os.getenv("RESUME_CONTEXT_MIN_SKILLS", "5"))
+    should_try_llm = (
+        os.getenv("ENABLE_RESUME_CONTEXT_LLM", "true").lower() in {"1", "true", "yes", "on"}
+        and os.getenv("LLM_PROVIDER", "mock").lower() == "ollama"
+        and (mode == "always" or (mode == "auto" and not enough_rule_context))
+    )
+    if should_try_llm:
         try:
             context = llm_contextualize_resume(evidence)
-            deterministic = deterministic_contextualize_resume(evidence)
             existing_update_ids = {update.evidence_id for update in context.evidence_updates}
             context.evidence_updates.extend(update for update in deterministic.evidence_updates if update.evidence_id not in existing_update_ids)
             if deterministic.candidate_context_summary and deterministic.candidate_context_summary not in context.candidate_context_summary:
                 context.candidate_context_summary = f"{context.candidate_context_summary} {deterministic.candidate_context_summary}".strip()
         except Exception as exc:
-            context = deterministic_contextualize_resume(evidence)
+            context = deterministic
             context.warning = f"Resume context LLM failed; deterministic contextualizer used: {exc}"
     else:
-        context = deterministic_contextualize_resume(evidence)
+        context = deterministic
 
     by_id: Dict[str, ResumeEvidence] = {item.id: item for item in evidence}
     for update in context.evidence_updates:

@@ -6,6 +6,7 @@ import os
 from typing import Dict, Iterable, List, Tuple
 
 from ..schemas import Citation, JobRequirement, RequirementMatch, ResumeEvidence, RetrievedChunk, RunConfig, ScoreBreakdown
+from .embedding_provider import embed_text
 from .inference_matcher import infer_requirement_support_batch
 from .rag_indexer import retrieve
 from .skill_normalizer import best_partial_match, detect_skills
@@ -62,8 +63,23 @@ def compare_requirements(run_id: str, requirements: List[JobRequirement], eviden
             evidence_by_skill[skill].append(ev)
 
     def retrieve_for_requirement(index: int, req: JobRequirement) -> tuple[int, List[RetrievedChunk], List[RetrievedChunk]]:
-        retrieved_resume = retrieve(run_id, req.text, "resume", config.top_k_resume_chunks, config.vector_store_provider)
-        retrieved_jd = retrieve(run_id, req.text, "job_description", min(2, config.top_k_job_chunks), config.vector_store_provider)
+        query_embedding = embed_text(req.text)
+        retrieved_resume = retrieve(
+            run_id,
+            req.text,
+            "resume",
+            config.top_k_resume_chunks,
+            config.vector_store_provider,
+            query_embedding=query_embedding,
+        )
+        retrieved_jd = retrieve(
+            run_id,
+            req.text,
+            "job_description",
+            min(2, config.top_k_job_chunks),
+            config.vector_store_provider,
+            query_embedding=query_embedding,
+        )
         return index, retrieved_resume, retrieved_jd
 
     retrieval_results: List[tuple[List[RetrievedChunk], List[RetrievedChunk]]] = [([], []) for _ in requirements]
@@ -103,7 +119,8 @@ def compare_requirements(run_id: str, requirements: List[JobRequirement], eviden
             strength = config.missing_match_score
 
         confidence = min(0.95, max(req.confidence, retrieved_resume[0].similarity_score if retrieved_resume else 0.4))
-        if strength < config.semantic_match_score and retrieved_resume:
+        min_inference_similarity = float(os.getenv("INFERENCE_MATCH_MIN_SIMILARITY", "0.32"))
+        if strength < config.semantic_match_score and retrieved_resume and retrieved_resume[0].similarity_score >= min_inference_similarity:
             inference_indexes.append(index)
             inference_items.append((req, retrieved_resume))
 

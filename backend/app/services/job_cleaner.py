@@ -106,16 +106,25 @@ def llm_clean_job_description(job_description_text: str) -> CleanedJobDescriptio
 
 
 def clean_job_description(job_description_text: str) -> CleanedJobDescription:
-    if os.getenv("ENABLE_JD_CLEANER_LLM", "true").lower() in {"1", "true", "yes", "on"} and os.getenv("LLM_PROVIDER", "mock").lower() == "ollama":
+    deterministic = deterministic_clean_job_description(job_description_text)
+    mode = os.getenv("JD_CLEANER_LLM_MODE", "always").lower()
+    # The deterministic cleaner handles normal job posts in milliseconds. In auto
+    # mode, only use the local LLM when the rule pass found too little signal or
+    # the user explicitly requests always-on cleaning.
+    enough_rule_signal = len(deterministic.concrete_requirements) >= int(os.getenv("JD_CLEANER_MIN_RULE_REQUIREMENTS", "4"))
+    should_try_llm = (
+        os.getenv("ENABLE_JD_CLEANER_LLM", "true").lower() in {"1", "true", "yes", "on"}
+        and os.getenv("LLM_PROVIDER", "mock").lower() == "ollama"
+        and (mode == "always" or (mode == "auto" and not enough_rule_signal))
+    )
+    if should_try_llm:
         try:
             cleaned = llm_clean_job_description(job_description_text)
             if cleaned.concrete_requirements:
                 return cleaned
         except Exception as exc:
-            fallback = deterministic_clean_job_description(job_description_text)
-            fallback.warning = f"JD cleaner LLM failed; deterministic cleaner used: {exc}"
-            return fallback
-    fallback = deterministic_clean_job_description(job_description_text)
-    if not fallback.concrete_requirements:
-        fallback.warning = "No concrete candidate requirements were extracted; downstream extraction will use the original job description."
-    return fallback
+            deterministic.warning = f"JD cleaner LLM failed; deterministic cleaner used: {exc}"
+            return deterministic
+    if not deterministic.concrete_requirements:
+        deterministic.warning = "No concrete candidate requirements were extracted; downstream extraction will use the original job description."
+    return deterministic

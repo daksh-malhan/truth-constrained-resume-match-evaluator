@@ -82,8 +82,17 @@ def build_chunks(run_id: str, sections: List[ResumeSection], job_paragraphs: Lis
     return chunks
 
 
-def retrieve(run_id: str, query: str, source_type: Optional[str] = None, top_k: int = 5, vector_store_provider: str | None = None) -> List[RetrievedChunk]:
-    query_embedding = embed_text(query)
+def retrieve(
+    run_id: str,
+    query: str,
+    source_type: Optional[str] = None,
+    top_k: int = 5,
+    vector_store_provider: str | None = None,
+    query_embedding: List[float] | None = None,
+) -> List[RetrievedChunk]:
+    # Requirement comparison asks the same query against resume and JD indexes.
+    # Accepting a caller-provided embedding avoids recomputing that vector twice.
+    query_embedding = query_embedding or embed_text(query)
     provider = (vector_store_provider or os.getenv("VECTOR_STORE_PROVIDER", "faiss")).lower()
     if provider == "qdrant":
         try:

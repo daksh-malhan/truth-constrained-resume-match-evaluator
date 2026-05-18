@@ -96,6 +96,16 @@ Selected defaults on the `ollama-specialized-modelfiles` branch:
 
 The specialized models are created from [ollama/Modelfile.*](ollama). Their system prompts bake in each task, so runtime calls send only the raw job description or compact JSON payload. This reduces repeated prompt tokens and keeps each model narrowly scoped. The final score is still computed by deterministic rubric code. The local LLM is used only behind structured-output interfaces, not as a black-box scorer.
 
+Performance defaults favor balanced local inference:
+
+- `JD_CLEANER_LLM_MODE=always` keeps LLM-based JD cleaning on because it materially affects requirement quality.
+- `RESUME_CONTEXT_LLM_MODE=auto` uses the local LLM only for sparse or ambiguous resume parses.
+- `INFERENCE_MATCH_BATCH_MODE=false` keeps the more reliable per-requirement matcher as the default; set it to `true` for experimental maximum-speed batches.
+- `ENABLE_COMPARISON_NARRATIVE_LLM=false` skips the optional narrative LLM call; deterministic report text still runs.
+- Resume and job-description retrieval reuse a single query embedding per requirement.
+
+Set `JD_CLEANER_LLM_MODE=auto` and `INFERENCE_MATCH_BATCH_MODE=true` when you want maximum speed. Set `RESUME_CONTEXT_LLM_MODE=always` or `ENABLE_COMPARISON_NARRATIVE_LLM=true` when you want maximum local-LLM interpretation over speed.
+
 Create the local specialized models with:
 
 ```bash
@@ -297,17 +307,28 @@ See [.env.example](.env.example):
 - `OLLAMA_LLM_TIMEOUT_SECONDS`
 - `OLLAMA_LLM_NUM_PREDICT`
 - `ENABLE_JD_CLEANER_LLM`
+- `JD_CLEANER_LLM_MODE`
+- `JD_CLEANER_MIN_RULE_REQUIREMENTS`
 - `OLLAMA_JD_CLEANER_MODEL`
 - `OLLAMA_JD_CLEANER_TIMEOUT_SECONDS`
 - `OLLAMA_JD_CLEANER_NUM_PREDICT`
 - `ENABLE_RESUME_CONTEXT_LLM`
+- `RESUME_CONTEXT_LLM_MODE`
+- `RESUME_CONTEXT_MIN_ACTION_ITEMS`
+- `RESUME_CONTEXT_MIN_SKILLS`
 - `OLLAMA_RESUME_CONTEXT_MODEL`
 - `OLLAMA_RESUME_CONTEXT_TIMEOUT_SECONDS`
 - `OLLAMA_RESUME_CONTEXT_NUM_PREDICT`
+- `ENABLE_COMPARISON_NARRATIVE_LLM`
 - `ENABLE_INFERENCE_MATCH_LLM`
+- `INFERENCE_MATCH_BATCH_MODE`
+- `INFERENCE_MATCH_BATCH_SIZE`
+- `INFERENCE_MATCH_MIN_SIMILARITY`
 - `OLLAMA_INFERENCE_MATCH_MODEL`
 - `OLLAMA_INFERENCE_MATCH_TIMEOUT_SECONDS`
 - `OLLAMA_INFERENCE_MATCH_NUM_PREDICT`
+- `OLLAMA_INFERENCE_MATCH_BATCH_TIMEOUT_SECONDS`
+- `OLLAMA_INFERENCE_MATCH_BATCH_NUM_PREDICT`
 - `OLLAMA_EMBEDDING_MODEL`
 - `OLLAMA_EMBEDDING_FALLBACK_MODELS`
 - `OLLAMA_EMBEDDING_BATCH_SIZE`

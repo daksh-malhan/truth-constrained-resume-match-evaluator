@@ -17,6 +17,8 @@ class ComparisonNarrative(BaseModel):
 def generate_comparison_narrative(matches: List[RequirementMatch], score: ScoreBreakdown, threshold_reached: bool) -> Tuple[str | None, str | None]:
     if os.getenv("LLM_PROVIDER", "mock").lower() != "ollama":
         return None, None
+    if os.getenv("ENABLE_COMPARISON_NARRATIVE_LLM", "false").lower() not in {"1", "true", "yes", "on"}:
+        return None, None
     compact_matches = [
         {
             "requirement": match.requirement_text,
