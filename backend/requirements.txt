@@ -6,3 +6,6 @@ PyMuPDF==1.25.1
 pytest==8.3.4
 httpx==0.28.1
 mcp==1.2.0
+langgraph==1.2.5
+langchain-core==1.4.7
+langchain-ollama==1.1.0

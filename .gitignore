@@ -12,3 +12,4 @@ data/
 frontend/.next/
 frontend/node_modules/
 *.log
+*.tsbuildinfo

@@ -1,6 +1,24 @@
-import type { FinalReport } from "./types";
+import type { CoachResponse, FinalReport } from "./types";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+
+export async function coachResume(body: {
+  resume: string;
+  job_description: string;
+  target_role: string;
+}): Promise<CoachResponse> {
+  const res = await fetch(`${API_BASE}/coach`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    const detail = errBody?.detail;
+    throw new Error(detail?.error ?? (typeof detail === "string" ? detail : "Coaching failed"));
+  }
+  return res.json();
+}
 
 export async function analyzeResume(form: FormData): Promise<FinalReport> {
   const res = await fetch(`${API_BASE}/api/analyze`, { method: "POST", body: form });

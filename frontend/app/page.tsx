@@ -23,7 +23,10 @@ export default function HomePage() {
           <h1 className="text-3xl font-semibold tracking-normal">Truth-Constrained Resume Match Evaluator</h1>
           <p className="mt-2 max-w-3xl text-slate-600">Upload a resume PDF, paste a job description, and get citation-backed RAG scoring with projected improvement recommendations that do not fabricate resume content.</p>
         </div>
-        <Link className="btn btn-secondary" href="/admin">Admin</Link>
+        <div className="flex gap-2">
+          <Link className="btn btn-secondary" href="/coach">Resume Coach</Link>
+          <Link className="btn btn-secondary" href="/admin">Admin</Link>
+        </div>
       </header>
 
       <UploadForm onResult={setReport} />

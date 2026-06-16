@@ -185,3 +185,35 @@ export type RunRow = {
   status: string;
   error_message?: string;
 };
+
+export type ToolCallTrace = {
+  step: number;
+  tool: string;
+  args: Record<string, unknown>;
+  result: Record<string, unknown>;
+  duration_ms: number;
+  error?: string | null;
+};
+
+export type RewriteResult = {
+  rewrite: string;
+  rationale: string;
+  truth_supported: boolean;
+  unsupported_claims: string[];
+  flagged: boolean;
+};
+
+export type CoachResponse = {
+  target_role: string;
+  initial_score?: number;
+  score_breakdown?: ScoreBreakdown;
+  gaps?: { missing_requirements: string[]; buried_keywords: string[] };
+  bullet_rewrites: RewriteResult[];
+  truth_constraint_notes: string[];
+  final_summary: string;
+  iterations: number;
+  stop_reason: string;
+  tool_call_trace: ToolCallTrace[];
+  llm_provider: string;
+  model: string;
+};

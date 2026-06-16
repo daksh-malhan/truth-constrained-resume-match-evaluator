@@ -1,0 +1,125 @@
+{
+  "generated_at": "2026-06-16T08:35:09.081882+00:00",
+  "provider": "ollama",
+  "model": "qwen2.5:7b-instruct",
+  "max_iterations": 6,
+  "aggregate": {
+    "cases": 5,
+    "mean_tool_call_recall": 1.0,
+    "fully_covered_cases": 5,
+    "mean_iterations": 5.2,
+    "mean_latency_ms": 61283,
+    "p50_latency_ms": 50349,
+    "max_latency_ms": 98236
+  },
+  "results": [
+    {
+      "name": "backend_python_intern",
+      "expected_tools": [
+        "find_gaps",
+        "rewrite_bullet",
+        "score_resume"
+      ],
+      "called_tools": [
+        "score_resume",
+        "find_gaps",
+        "rewrite_bullet",
+        "rewrite_bullet",
+        "check_truth",
+        "check_truth"
+      ],
+      "tool_call_recall": 1.0,
+      "fully_covered": true,
+      "iterations": 6,
+      "latency_ms": 98236,
+      "stop_reason": "completed",
+      "initial_score": 6.69,
+      "flagged_rewrites": 0
+    },
+    {
+      "name": "data_analyst",
+      "expected_tools": [
+        "find_gaps",
+        "score_resume"
+      ],
+      "called_tools": [
+        "score_resume",
+        "find_gaps",
+        "rewrite_bullet",
+        "rewrite_bullet",
+        "check_truth",
+        "check_truth"
+      ],
+      "tool_call_recall": 1.0,
+      "fully_covered": true,
+      "iterations": 6,
+      "latency_ms": 59871,
+      "stop_reason": "completed",
+      "initial_score": 7.14,
+      "flagged_rewrites": 0
+    },
+    {
+      "name": "frontend_react",
+      "expected_tools": [
+        "find_gaps",
+        "rewrite_bullet",
+        "score_resume"
+      ],
+      "called_tools": [
+        "score_resume",
+        "find_gaps",
+        "rewrite_bullet",
+        "rewrite_bullet",
+        "rewrite_bullet"
+      ],
+      "tool_call_recall": 1.0,
+      "fully_covered": true,
+      "iterations": 5,
+      "latency_ms": 50349,
+      "stop_reason": "completed",
+      "initial_score": 7.03,
+      "flagged_rewrites": 0
+    },
+    {
+      "name": "ml_intern",
+      "expected_tools": [
+        "find_gaps",
+        "score_resume"
+      ],
+      "called_tools": [
+        "score_resume",
+        "find_gaps",
+        "rewrite_bullet",
+        "rewrite_bullet",
+        "check_truth"
+      ],
+      "tool_call_recall": 1.0,
+      "fully_covered": true,
+      "iterations": 5,
+      "latency_ms": 48129,
+      "stop_reason": "completed",
+      "initial_score": 6.42,
+      "flagged_rewrites": 0
+    },
+    {
+      "name": "strong_match_backend",
+      "expected_tools": [
+        "find_gaps",
+        "score_resume"
+      ],
+      "called_tools": [
+        "score_resume",
+        "find_gaps",
+        "rewrite_bullet",
+        "rewrite_bullet"
+      ],
+      "tool_call_recall": 1.0,
+      "fully_covered": true,
+      "iterations": 4,
+      "latency_ms": 49830,
+      "stop_reason": "completed",
+      "initial_score": 7.81,
+      "flagged_rewrites": 0
+    }
+  ]
+}

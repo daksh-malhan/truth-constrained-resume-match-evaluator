@@ -40,6 +40,13 @@ flowchart TD
   MCP["MCP Server"] --> Parser
   MCP --> RAG
   MCP --> Report
+  UI --> Coach["POST /coach"]
+  Coach --> Agent["LangGraph ReAct Agent"]
+  Agent -->|tools| Tools["score_resume / find_gaps / rewrite_bullet / check_truth"]
+  Tools --> Score
+  Tools --> Compare
+  Tools --> Truth["truth_filter"]
+  Agent --> Trace["Coached result + tool-call trace"]
 ```
 
 ### Execution Flow
@@ -79,7 +86,7 @@ backend/
     main.py                 FastAPI application wiring
     schemas.py              Pydantic API, scoring, ATS, RAG, and report models
     database.py             SQLite persistence for runs, logs, chunks, reports
-    routers/                Health, analyze, admin, and run-detail APIs
+    routers/                Health, analyze, admin, run-detail, and /coach APIs
     services/
       analysis_service.py   End-to-end orchestration
       pdf_parser.py         PDF validation and PyMuPDF extraction
@@ -92,9 +99,17 @@ backend/
       ats_scoring.py        ATS readiness and ranking simulation
       mcp_server.py         MCP tools for external clients
       *_provider.py         LLM, embedding, vector-store abstractions
-    tests/                  pytest coverage for scoring, RAG, ATS, config, safety
+    agent/                  Resume Coach agentic layer
+      context.py            Text -> sections -> RAG index -> evidence/requirements adapter
+      tools.py              score_resume, find_gaps, rewrite_bullet, check_truth logic
+      registry.py           LangChain tool definitions (JSON schemas) bound to a session
+      model.py              Swappable BaseChatModel provider (native vs structured tool-calling)
+      structured_model.py   Structured-output tool-call fallback for non-tools models
+      loop.py               LangGraph ReAct loop, trace, iteration cap, truth guard
+      eval/                 Benchmark cases + harness + runner (real measured results)
+    tests/                  pytest coverage for scoring, RAG, ATS, config, safety, agent
 frontend/
-  app/                      Next.js routes: /, /admin, /runs/[runId]
+  app/                      Next.js routes: /, /coach, /admin, /runs/[runId]
   components/               Report, ATS, admin, logs, chunks, citations panels
   lib/                      API client and shared TypeScript types
 ollama/
@@ -112,11 +127,163 @@ scripts/
 - Local-first AI: the default real runtime is Ollama + Qdrant, with no hardcoded API keys.
 - Operational visibility: runs, logs, chunks, citations, config, and scores are persisted for debugging.
 
+## Resume Coach Agent (Agentic Layer)
+
+On top of the deterministic evaluator sits an **LLM-driven Resume Coach agent**. It exposes
+the evaluator's capabilities as **function-calling tools** and runs a **ReAct-style
+tool-calling loop** (built on **LangGraph**) to coach a resume toward a target job — while
+preserving the same truth constraint: it never asserts a claim the resume does not support.
+
+The agent is a thin orchestration layer. Every tool delegates to the existing services
+(`scoring_engine`, `truth_filter`, `improvement_planner`); no evaluator logic is reimplemented.
+
+### Agent architecture
+
+```text
+            POST /coach {resume, job_description, target_role}
+                              │
+                              ▼
+                  ┌───────────────────────┐
+                  │   LangGraph ReAct loop │  (agent node ⇄ tools node, max-iteration cap)
+                  │   loop.py              │
+                  └───────────┬───────────┘
+                       binds  │  tools (native Ollama function-calling)
+                              ▼
+   ┌──────────────┬───────────────┬────────────────┬───────────────┐
+   │ score_resume │   find_gaps   │ rewrite_bullet │  check_truth  │   registry.py / tools.py
+   └──────┬───────┴───────┬───────┴───────┬────────┴───────┬───────┘
+          ▼               ▼               ▼                ▼
+   calculate_score   compare_reqs +   LLMClient gen +   truth_filter
+   (scoring_engine)  split_matches    truth re-check    .classify_suggestion
+          │               │               │                │
+          ▼               ▼               ▼                ▼
+   ┌────────────────────────────────────────────────────────────────┐
+   │ CoachContext (context.py): text → sections → RAG index →        │
+   │ evidence + requirements, built once per (resume, JD) and reused │
+   └────────────────────────────────────────────────────────────────┘
+```
+
+The loop is a hand-built `StateGraph` (agent ⇄ tools) so every tool call is timed and logged
+into a trace, the iteration cap is enforced explicitly, and the truth guard is applied to each
+rewrite. The LLM is swappable behind one interface (`agent/model.py` → `BaseChatModel`);
+it **defaults to the existing local Ollama setup** and a hosted model can be dropped in later
+without touching the loop.
+
+**Native vs. structured tool-calling.** `get_chat_model` uses **native Ollama function-calling**
+(`ChatOllama.bind_tools`) when the model advertises the `tools` capability (checked via
+`/api/show`). For a model **without** native tool support, it falls back to a
+**structured-output tool-call parser** (`agent/structured_model.py`): the tool catalog and a
+JSON protocol are injected into the prompt, and the model's JSON reply
+(`{"tool": ..., "args": ...}` or `{"final": ...}`) is parsed into tool calls. Control this with
+`OLLAMA_AGENT_TOOL_MODE = auto` (default) `| native | structured`.
+
+### Tools (clean JSON schemas, delegate to existing logic)
+
+| Tool | Signature | Delegates to |
+| --- | --- | --- |
+| `score_resume` | `(resume, job_description) -> {score, breakdown}` | `scoring_engine.calculate_score` |
+| `find_gaps` | `(resume, job_description) -> {missing_requirements, buried_keywords}` | `compare_requirements` + `split_matches` |
+| `rewrite_bullet` | `(bullet, target_role, missing_keywords) -> {rewrite, rationale, truth_supported, flagged}` | `LLMClient` generation, then truth re-check |
+| `check_truth` | `(bullet) -> {supported, unsupported_claims}` | `truth_filter.classify_suggestion` |
+
+`resume`/`job_description` default to the active coaching session, so the model does not have
+to echo the full documents on every call (they are grounded from the session context).
+
+### Truth constraint in the loop
+
+`rewrite_bullet` generates a stronger bullet, then runs `check_truth` on its own output. Any
+rewrite that introduces an **unverifiable number, a skill absent from the resume, or a
+production/seniority claim** is returned with `flagged: true` and surfaced under
+`truth_constraint_notes` — **flagged, never asserted**. This reuses the exact same
+truth-constraint primitives as the deterministic pipeline.
+
+### Why LangGraph (vs a hand-rolled loop)
+
+A clean hand-rolled loop was the lighter option, but LangGraph was chosen to use a standard,
+inspectable graph abstraction (typed `MessagesState`, explicit nodes/edges, recursion limit)
+and first-class native tool-calling via `ChatOllama.bind_tools`. The cost is three
+dependencies (`langgraph`, `langchain-core`, `langchain-ollama`); the loop itself stays small
+and the tool/scoring logic remains framework-agnostic.
+
+### Run the agent
+
+```bash
+cd backend
+# tools-capable local model + local embeddings
+export AGENT_LLM_PROVIDER=ollama OLLAMA_AGENT_MODEL=qwen2.5:7b-instruct
+export LLM_PROVIDER=ollama EMBEDDING_PROVIDER=ollama OLLAMA_EMBEDDING_MODEL=nomic-embed-text:latest
+uvicorn app.main:app --reload
+
+curl -s http://localhost:8000/coach -H 'Content-Type: application/json' -d '{
+  "resume": "PROJECTS\nBuilt a FastAPI service in Python with pytest...\nSKILLS\nPython, FastAPI, Docker, SQL",
+  "job_description": "Backend Engineer Intern\nRequired: Python and REST API. Preferred: Kubernetes, AWS.",
+  "target_role": "Backend Engineer Intern"
+}' | jq '{initial_score, iterations, tools: [.tool_call_trace[].tool], flagged: .truth_constraint_notes}'
+```
+
+The response contains the coached result (score, gaps, bullet rewrites, truth-constraint notes,
+final summary) **plus the full tool-call trace** (tool name, args, result, duration per step).
+
+`OLLAMA_AGENT_MODEL` may be any tools-capable model (`qwen2.5:7b-instruct`, `llama3.1:8b`, or
+the project's `resume-comparison-narrator:latest`); a model without native tool support is
+handled by the structured fallback (`OLLAMA_AGENT_TOOL_MODE=auto`). `COACH_MAX_ITERATIONS`
+(default 6) caps the loop.
+
+### Run the eval harness
+
+A small benchmark of `(resume, JD)` cases with expected tool-call behavior. It runs every case
+through the **real agent** and reports tool-call accuracy (recall vs the expected tool set),
+iteration count, and end-to-end latency. **All numbers are measured from live runs — nothing is
+hardcoded.**
+
+```bash
+cd backend
+LLM_PROVIDER=ollama OLLAMA_LLM_MODEL=qwen2.5:7b-instruct \
+EMBEDDING_PROVIDER=ollama OLLAMA_EMBEDDING_MODEL=nomic-embed-text:latest \
+AGENT_LLM_PROVIDER=ollama OLLAMA_AGENT_MODEL=qwen2.5:7b-instruct \
+python -m app.agent.eval.run_eval --out app/agent/eval/results.json
+```
+
+It prints a Markdown table and writes JSON to `app/agent/eval/results.json`.
+
+#### Measured results
+
+Live run, `provider=ollama`, `model=qwen2.5:7b-instruct`, CPU-bound local inference
+(`max_iterations=6`). Reproduce with the command above; numbers will vary by hardware.
+
+| Case | Expected tools | Called tools | Recall | Iters | Latency (ms) | Stop |
+| --- | --- | --- | --- | --- | --- | --- |
+| backend_python_intern | find_gaps, rewrite_bullet, score_resume | score_resume, find_gaps, rewrite_bullet, rewrite_bullet, check_truth, check_truth | 1.00 | 6 | 98236 | completed |
+| data_analyst | find_gaps, score_resume | score_resume, find_gaps, rewrite_bullet, rewrite_bullet, check_truth, check_truth | 1.00 | 6 | 59871 | completed |
+| frontend_react | find_gaps, rewrite_bullet, score_resume | score_resume, find_gaps, rewrite_bullet, rewrite_bullet, rewrite_bullet | 1.00 | 5 | 50349 | completed |
+| ml_intern | find_gaps, score_resume | score_resume, find_gaps, rewrite_bullet, rewrite_bullet, check_truth | 1.00 | 5 | 48129 | completed |
+| strong_match_backend | find_gaps, score_resume | score_resume, find_gaps, rewrite_bullet, rewrite_bullet | 1.00 | 4 | 49830 | completed |
+
+**Aggregate** — cases: 5, mean tool-call recall: **1.0**, fully covered: **5/5**, mean iters:
+**5.2**, mean latency: **61283 ms** (p50 50349, max 98236).
+
+Observations: the agent reliably grounds itself first (`score_resume` → `find_gaps`) before
+suggesting `rewrite_bullet`s, and often self-verifies rewrites with `check_truth`. No case hit
+the iteration cap. Latency is dominated by local CPU inference; a GPU or hosted model would cut
+it substantially. Full per-case JSON is written to `app/agent/eval/results.json`.
+
+### Agent tests
+
+```bash
+cd backend
+python -m pytest app/tests/test_agent_tools.py app/tests/test_agent_loop.py \
+                 app/tests/test_coach_endpoint.py app/tests/test_agent_eval.py -q
+```
+
+These are deterministic: tool wrappers run against the mock providers, and the loop/eval/endpoint
+tests inject a scripted `BaseChatModel`, so no Ollama is required to run the suite.
+
 ## Tech Stack
 
 - Backend: Python 3.11+, FastAPI, Pydantic, SQLite, PyMuPDF
 - RAG: Ollama local embeddings plus Qdrant vector search in Docker; local embedding model fallback chain before any test-only mock fallback
 - AI layer: Ollama local chat model for comparison narrative, local LLM fallback chain, provider abstraction; scoring remains deterministic
+- Agent layer: LangGraph ReAct tool-calling loop (`langgraph`, `langchain-core`, `langchain-ollama`) over native Ollama function-calling, swappable LLM provider, eval harness
 - MCP: Python MCP-compatible server exposing core tools
 - Frontend: Next.js, TypeScript, TailwindCSS
 - Tests: pytest
@@ -671,6 +838,7 @@ The API intentionally returns generated recommendations separately from source e
 - `GET /api/admin/runs/{run_id}`
 - `GET /api/admin/runs/{run_id}/logs`
 - `GET /api/admin/runs/{run_id}/chunks`
+- `POST /coach` — Resume Coach agent (text in, coached result + full tool-call trace out)
 
 ## Local Setup
 
